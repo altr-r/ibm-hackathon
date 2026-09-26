@@ -106,15 +106,13 @@ class DistroPpathCheckPrimitive(AdaptationPrimitive):
             result,
         )
 
-        # 4. Inject the helper function (once) — insert after the last top-level import block
-        if "_bf_detect_distro" not in result:
-            # Find insertion point: after "import ..." block
+        # 4. Inject the helper function (once) — insert after the last top-level import block.
+        # Check for the *definition* specifically; calls like _bf_detect_distro() are already
+        # present in the text after steps 1-3, so checking for any occurrence would skip
+        # injection every time.
+        if "def _bf_detect_distro" not in result:
             insert_after = _find_import_end(result)
             result = result[:insert_after] + _BF_HELPER + result[insert_after:]
-        else:
-            # If already present from a previous pass, just ensure the helper is there
-            if "_bf_detect_distro" not in result:
-                result = _BF_HELPER + result
 
         return result
 

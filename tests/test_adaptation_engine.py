@@ -120,6 +120,110 @@ def test_patcher_raises_on_missing_file():
 
 
 # ---------------------------------------------------------------------------
+# apply_plan affected_targets regression
+# ---------------------------------------------------------------------------
+
+def test_apply_plan_affected_targets_are_distro_names():
+    """
+    Regression: apply_plan must populate AppliedDiff.affected_targets with distro
+    names like ['fedora', 'arch'], not issue indices like [0, 2, 3].
+    """
+    from black_flag.adaptation_engine.patcher import apply_plan
+    from black_flag.core.types import AdaptationPlan, PrimitiveApplication, PortabilityIssue
+
+    issues = [
+        PortabilityIssue(
+            category="shell-ism",
+            severity="warning",
+            source_file="setup.sh",
+            line=1,
+            affected_targets=["fedora", "arch"],
+            explanation="bash shebang",
+            suggested_primitive="shell_compat",
+            verification_method="docker-test",
+        ),
+        PortabilityIssue(
+            category="package-manager",
+            severity="error",
+            source_file="setup.sh",
+            line=2,
+            affected_targets=["fedora", "arch"],
+            explanation="apt-get not portable",
+            suggested_primitive="pkg_manager_call",
+            verification_method="docker-test",
+        ),
+    ]
+    plan = AdaptationPlan(
+        applications=[
+            PrimitiveApplication(
+                primitive_id="shell_compat",
+                params={"strategy": "explicit_bash"},
+                issue_ids=[0],
+                rationale="fix shebang",
+            ),
+        ],
+        source="deterministic",
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tree = _demo_tree(tmp)
+        applied, warnings = apply_plan(
+            plan_applications=plan.applications,
+            working_tree=tree,
+            start_sequence=1,
+            iteration=0,
+            issues=issues,
+        )
+
+    assert len(applied) == 1
+    diff = applied[0]
+    # affected_targets must contain distro names, never integer issue indices
+    for target in diff.affected_targets:
+        assert isinstance(target, str), (
+            f"affected_targets must contain distro name strings, got {type(target)}: {target!r}"
+        )
+        assert target in ("ubuntu", "fedora", "arch"), (
+            f"affected_targets must be valid distro names, got: {target!r}"
+        )
+    assert "fedora" in diff.affected_targets
+    assert "arch" in diff.affected_targets
+
+
+def test_apply_plan_affected_targets_no_issues_list():
+    """Without an issues list, affected_targets falls back to ['fedora', 'arch']."""
+    from black_flag.adaptation_engine.patcher import apply_plan
+    from black_flag.core.types import AdaptationPlan, PrimitiveApplication
+
+    plan = AdaptationPlan(
+        applications=[
+            PrimitiveApplication(
+                primitive_id="shell_compat",
+                params={"strategy": "explicit_bash"},
+                issue_ids=[0],
+                rationale="fix shebang",
+            ),
+        ],
+        source="deterministic",
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tree = _demo_tree(tmp)
+        applied, warnings = apply_plan(
+            plan_applications=plan.applications,
+            working_tree=tree,
+            start_sequence=1,
+            iteration=0,
+            # issues not supplied
+        )
+
+    assert len(applied) == 1
+    diff = applied[0]
+    for target in diff.affected_targets:
+        assert isinstance(target, str), f"affected_targets must be strings, got {type(target)}"
+        assert target in ("ubuntu", "fedora", "arch"), f"Got unexpected target: {target!r}"
+
+
+# ---------------------------------------------------------------------------
 # Rollback
 # ---------------------------------------------------------------------------
 

@@ -100,18 +100,24 @@ def apply_plan(
     working_tree: Path,
     start_sequence: int = 1,
     iteration: int = 0,
+    issues: list | None = None,  # list[PortabilityIssue] — used to resolve affected_targets
 ) -> tuple[list[AppliedDiff], list[str]]:
     """
     Apply a full AdaptationPlan to the working tree.
 
     Returns (applied_diffs, warnings).
     Skips (and logs a warning for) any primitive whose pattern is not found.
+
+    *issues* is the list of PortabilityIssue returned by run_analysis().  When
+    supplied, affected_targets on each AppliedDiff is populated with the union of
+    distro names from the referenced issues rather than the raw integer issue_ids.
     """
     from black_flag.primitives.catalog import get_primitive
 
     applied: list[AppliedDiff] = []
     warnings: list[str] = []
     seq = start_sequence
+    issues_list = issues or []
 
     for prim_app in plan_applications:
         try:
@@ -130,6 +136,17 @@ def apply_plan(
                 )
                 continue
 
+        # Derive affected_targets from the referenced issues (distro names, not indices)
+        affected: list[str] = []
+        for idx in prim_app.issue_ids:
+            if 0 <= idx < len(issues_list):
+                for distro in issues_list[idx].affected_targets:
+                    if distro not in affected:
+                        affected.append(distro)
+        # Fall back to a sensible default if no issues were supplied or matched
+        if not affected:
+            affected = ["fedora", "arch"]
+
         try:
             diff = apply_primitive(
                 primitive=primitive,
@@ -138,7 +155,7 @@ def apply_plan(
                 working_tree=working_tree,
                 sequence=seq,
                 rationale=prim_app.rationale,
-                affected_targets=list(prim_app.issue_ids),  # store issue indices as hint
+                affected_targets=affected,
                 iteration=iteration,
             )
             applied.append(diff)

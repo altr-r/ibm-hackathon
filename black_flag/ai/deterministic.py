@@ -36,6 +36,9 @@ _CATEGORY_PRIMITIVE_MAP: dict[str, str] = {
     "service-name":     "service_name_remap",
 }
 
+# requirements.txt library-name issues use requirements_normalize, not package_name_remap
+# This is handled by checking the source_file extension in plan_adaptations below.
+
 # Default params for each primitive when derived deterministically
 def _default_params(primitive_id: str, issue: PortabilityIssue) -> dict:
     if primitive_id == "shell_compat":
@@ -130,6 +133,9 @@ class DeterministicProvider(AIProvider):
         prim_to_issues: dict[str, list[int]] = {}
         for idx, issue in enumerate(issues):
             prim_id = _CATEGORY_PRIMITIVE_MAP.get(issue.category)
+            # requirements.txt library-name issues should use requirements_normalize
+            if prim_id == "package_name_remap" and issue.source_file.endswith(".txt"):
+                prim_id = "requirements_normalize"
             if prim_id and prim_id in catalog:
                 prim_to_issues.setdefault(prim_id, []).append(idx)
 

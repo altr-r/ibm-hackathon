@@ -40,8 +40,10 @@ _RE_PACMAN_CALL = re.compile(
 # Bash-specific shebang
 _RE_BASH_SHEBANG = re.compile(r"^#!/bin/bash\b")
 
-# Bash [[  ]] test construct — matches [[ anywhere on a line (e.g. after 'if ')
-_RE_BASH_DBL_BRACKET = re.compile(r"\[\[", re.MULTILINE)
+# Bash [[  ]] test construct — matches [[ on non-comment lines only.
+# The (?!#) negative lookahead and "not inside a comment" check ensure we don't
+# flag comments that explain the [[]] syntax (e.g. "# Also, [[ below is a bash-ism").
+_RE_BASH_DBL_BRACKET = re.compile(r"^(?!\s*#).*\[\[", re.MULTILINE)
 
 # Debian-specific package names commonly misused in install commands
 _DEBIAN_PKG_NAMES = {
@@ -55,8 +57,10 @@ _DEBIAN_PKG_NAMES = {
     "libncurses-dev": "ncurses-dev",
 }
 
+# Only match on non-comment lines (avoid flagging comments that discuss the Debian name)
 _RE_DEBIAN_PKG = re.compile(
-    r"\b(" + "|".join(re.escape(p) for p in _DEBIAN_PKG_NAMES) + r")\b"
+    r"^(?!\s*#).*\b(" + "|".join(re.escape(p) for p in _DEBIAN_PKG_NAMES) + r")\b",
+    re.MULTILINE,
 )
 
 # Debian service names

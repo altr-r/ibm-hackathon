@@ -15,6 +15,7 @@ from black_flag.core.types import PortabilityIssue
 _PYTHON_EXTS = {".py"}
 _SHELL_EXTS = {".sh", ".bash"}
 _C_EXTS = {".c", ".cpp", ".cc", ".cxx", ".h", ".hpp"}
+_REQUIREMENTS_NAMES = {"requirements.txt", "requirements-dev.txt", "requirements_dev.txt"}
 
 # Directories / files to always skip
 _SKIP_DIRS = {
@@ -34,6 +35,7 @@ def run_analysis(source_dir: Path) -> list[PortabilityIssue]:
     from black_flag.analyzer.python_analyzer import analyze_python
     from black_flag.analyzer.shell_analyzer import analyze_shell
     from black_flag.analyzer.c_analyzer import analyze_c
+    from black_flag.analyzer.requirements_analyzer import analyze_requirements
 
     issues: list[PortabilityIssue] = []
     seen: set[tuple[str, int, str]] = set()
@@ -55,6 +57,8 @@ def run_analysis(source_dir: Path) -> list[PortabilityIssue]:
             new = analyze_shell(path, source_dir)
         elif ext in _C_EXTS:
             new = analyze_c(path, source_dir)
+        elif path.name in _REQUIREMENTS_NAMES:
+            new = analyze_requirements(path, source_dir)
         else:
             continue
 

@@ -91,6 +91,93 @@ def test_prim002_raises_when_no_match():
 
 
 # ---------------------------------------------------------------------------
+# PRIM-002: regression tests for helper injection bug
+# ---------------------------------------------------------------------------
+
+def test_prim002_injects_helper_definition():
+    """Regression: _bf_detect_distro must be *defined* in the output, not just called."""
+    from black_flag.primitives.path_normalize import DistroPpathCheckPrimitive
+    p = DistroPpathCheckPrimitive()
+    content = (
+        'import os\n'
+        'if os.path.exists("/etc/debian_version"):\n'
+        '    with open("/etc/debian_version") as f:\n'
+        '        print(f"Debian version: {f.read().strip()}")\n'
+        'else:\n'
+        '    raise RuntimeError("This application requires a Debian-based system.")\n'
+    )
+    result = p.apply(content, {}, {})
+    assert 'def _bf_detect_distro' in result, (
+        "Helper definition must be injected — calling _bf_detect_distro() without "
+        "defining it causes NameError at runtime."
+    )
+
+
+def test_prim002_helper_defined_exactly_once():
+    """Regression: applying PRIM-002 twice must not produce duplicate helper definitions."""
+    from black_flag.primitives.path_normalize import DistroPpathCheckPrimitive
+    p = DistroPpathCheckPrimitive()
+    content = (
+        'import os\n'
+        'if os.path.exists("/etc/debian_version"):\n'
+        '    print("debian")\n'
+        'else:\n'
+        '    raise RuntimeError("This application requires a Debian-based system.")\n'
+    )
+    # First application
+    result = p.apply(content, {}, {})
+    assert result.count('def _bf_detect_distro') == 1, "Expected exactly one helper definition after first apply"
+
+    # Second application on already-adapted content must not inject a second copy
+    from black_flag.primitives.base import PrimitiveNotApplicable
+    try:
+        result2 = p.apply(result, {}, {})
+        assert result2.count('def _bf_detect_distro') == 1, (
+            "Expected exactly one helper definition after second apply"
+        )
+    except PrimitiveNotApplicable:
+        # No /etc/debian_version left — primitive correctly raises; helper already present
+        pass
+
+
+def test_prim002_adapted_code_compiles():
+    """Regression: the adapted source must compile without SyntaxError."""
+    import py_compile, tempfile, os
+    from black_flag.primitives.path_normalize import DistroPpathCheckPrimitive
+    p = DistroPpathCheckPrimitive()
+    content = open(
+        __import__("os").path.join(
+            __import__("os").path.dirname(__file__), "..", "examples", "portable-demo", "app.py"
+        )
+    ).read()
+    result = p.apply(content, {}, {})
+    # compile() raises SyntaxError if the code is invalid
+    compile(result, "<prim002-adapted>", "exec")
+
+
+def test_prim002_adapted_code_defines_callable_helper():
+    """Regression: the adapted source must define _bf_detect_distro as a callable."""
+    from black_flag.primitives.path_normalize import DistroPpathCheckPrimitive
+    p = DistroPpathCheckPrimitive()
+    content = (
+        'import os\n'
+        'if os.path.exists("/etc/debian_version"):\n'
+        '    print("debian")\n'
+        'else:\n'
+        '    raise RuntimeError("This application requires a Debian-based system.")\n'
+    )
+    result = p.apply(content, {}, {})
+    ns: dict = {}
+    exec(compile(result, "<test>", "exec"), ns)  # noqa: S102
+    assert callable(ns.get("_bf_detect_distro")), (
+        "_bf_detect_distro must be a callable function in the adapted module"
+    )
+    # Must return a string (the distro ID)
+    distro = ns["_bf_detect_distro"]()
+    assert isinstance(distro, str), "_bf_detect_distro() must return a str"
+
+
+# ---------------------------------------------------------------------------
 # PRIM-003: env_var_portability
 # ---------------------------------------------------------------------------
 

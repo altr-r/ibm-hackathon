@@ -353,6 +353,7 @@ def adapt(
                 working_tree=working_tree,
                 start_sequence=1,
                 iteration=0,
+                issues=issues_before,
             )
             for w in patch_warnings:
                 console.print(f"  [yellow]⚠  {w}[/yellow]")
