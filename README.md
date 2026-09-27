@@ -16,7 +16,7 @@ black-flag install portable-demo-0.1.0.bfpack
 Given a Linux application repository, Black Flag:
 
 1. **Analyzes** source code for distro-specific assumptions (AST-based for Python, regex for shell/C)
-2. **Plans** portability adaptations using AI (IBM watsonx.ai) or deterministic rules
+2. **Plans** portability adaptations using AI (local Ollama/Granite or IBM watsonx.ai) or deterministic rules
 3. **Applies** reversible, bounded adaptations from a curated primitive catalog
 4. **Builds and tests** the application in Docker containers for all three target distros
 5. **Diagnoses** failures and iterates repairs (up to 3 iterations)
@@ -40,11 +40,14 @@ Given a Linux application repository, Black Flag:
 ## Installation
 
 ```bash
-pip install -e ".[dev]"       # development install with test deps
-pip install .                  # production install
+pip install -e ".[dev]"        # development install with test deps
+pip install -e ".[web]"        # web dashboard deps (FastAPI + uvicorn)
+pip install -e ".[dev,web]"    # everything: tests + web dashboard
+pip install .                  # production install (CLI only)
 ```
 
-**Requirements:** Python 3.11+, Docker (for build/test matrix)
+**Requirements:** Python 3.11+, Docker (for the build/test matrix). The optional
+web dashboard needs FastAPI + uvicorn (installed via the `web` extra).
 
 ---
 
@@ -69,6 +72,88 @@ black-flag status
 
 ---
 
+## Running Black Flag Locally
+
+The easiest way to demo Black Flag is the **local web dashboard** driven by a
+local **Ollama (IBM Granite)** model — no cloud credentials required.
+
+### 1. Python environment
+
+```bash
+python -m venv .venv
+# Windows PowerShell:  .venv\Scripts\Activate.ps1
+# macOS / Linux:       source .venv/bin/activate
+pip install -e ".[dev,web]"
+```
+
+### 2. Install Ollama and pull Granite
+
+Install Ollama from <https://ollama.com/download>, make sure it is running, then
+pull the model Black Flag uses:
+
+```bash
+ollama pull granite4.2:3b
+```
+
+Ollama exposes a local HTTP API on `http://localhost:11434` by default.
+
+### 3. Configure the AI provider
+
+```bash
+# Windows PowerShell
+$env:AI_PROVIDER="ollama"
+$env:OLLAMA_BASE_URL="http://localhost:11434"
+$env:OLLAMA_MODEL="granite4.2:3b"
+
+# macOS / Linux
+export AI_PROVIDER=ollama
+export OLLAMA_BASE_URL=http://localhost:11434
+export OLLAMA_MODEL=granite4.2:3b
+```
+
+All three variables have sensible defaults, so `AI_PROVIDER=ollama` alone is
+enough. No `WATSONX_*` credentials are needed for Ollama.
+
+### 4. Start the web app
+
+```bash
+black-flag web                 # serves http://127.0.0.1:8000
+# or directly:
+uvicorn black_flag.web.app:app --host 127.0.0.1 --port 8000
+```
+
+### 5. Open the browser
+
+Visit **http://127.0.0.1:8000**, then click **Launch Demo → Analyze Portability →
+Adapt Project**. You will see the live pipeline (Analyze → AI Plan → Adapt →
+Build → Test → Diagnose → Repair → Verify → Package), a terminal-style log, the
+compatibility matrix, the before/after portability scores, and a **.bfpack**
+download — all produced by the real engine.
+
+### 6. CLI usage (same engine)
+
+```bash
+black-flag info                              # shows the active provider
+black-flag analyze examples/portable-demo/
+black-flag adapt   examples/portable-demo/   # honors AI_PROVIDER
+black-flag adapt   examples/portable-demo/ --no-ai   # force deterministic
+```
+
+### Deterministic fallback
+
+If Ollama is not running, the model is missing, a request times out, or the model
+returns invalid/unsupported output, Black Flag **automatically falls back to the
+deterministic rule-based provider** and never crashes. Both the CLI and the web
+log report the real outcome (`Ollama request: SUCCESS` vs `FAILED … fallback:
+deterministic`) so a fallback is never mistaken for a real AI response.
+
+### watsonx.ai remains optional
+
+Set `AI_PROVIDER=watsonx` (plus the `WATSONX_*` variables) to use IBM watsonx.ai
+instead of local Ollama. See [AI Providers](#ai-providers).
+
+---
+
 ## CLI Commands
 
 ```
@@ -84,24 +169,111 @@ black-flag install  <file.bfpack>    Install on host
   --force                            Reinstall if already installed
 
 black-flag status   [name]           Show installed packages
-black-flag info                      Environment info
+black-flag info                      Environment info (provider, Docker, targets)
+black-flag web                       Launch the local web dashboard (FastAPI)
+  --host 127.0.0.1                   Bind host
+  --port 8000                        Bind port
 black-flag --version                 Show version
 ```
 
 ---
 
-## AI Integration (IBM watsonx.ai)
+## AI Providers
 
-Set these environment variables to enable AI-assisted planning:
+Black Flag supports three interchangeable reasoning providers, selected with the
+`AI_PROVIDER` environment variable (or the CLI `--no-ai` flag):
+
+| `AI_PROVIDER`   | Provider                    | Credentials                 | Notes |
+|-----------------|-----------------------------|-----------------------------|-------|
+| `ollama`        | Local Ollama (IBM Granite)  | none                        | Default for local demos — `http://localhost:11434` |
+| `watsonx`       | IBM watsonx.ai              | `WATSONX_API_KEY` + project | Cloud-hosted Granite |
+| `deterministic` | Rule-based                  | none                        | Always-available fallback |
+
+Whichever provider is active, the model is used for two **build-time** tasks
+only — it is never used at application runtime:
+
+- **Mode A — Adaptation planning:** given the detected portability issues, the
+  target distros, and the primitive catalog, the model returns a strict-JSON plan
+  selecting which bounded primitives to apply.
+- **Mode B — Failure diagnosis:** when a Docker build/test stage fails, the model
+  receives the distro, stage, stdout/stderr, and already-applied diffs, and
+  returns a constrained repair decision (apply one primitive, or `give_up`).
+
+The model **never executes shell commands and never rewrites files directly**.
+Its output is limited to IDs from the 7-primitive catalog; every ID is validated
+against the catalog and any invalid ID is dropped. All actual file modifications
+are performed by the bounded, reversible primitive engine.
+
+### Ollama (local, no credentials)
 
 ```bash
-export WATSONX_API_KEY="your-ibm-cloud-api-key"
-export WATSONX_BASE_URL="https://us-south.ml.cloud.ibm.com/ml/v1"
-export WATSONX_MODEL_ID="ibm/granite-3-8b-instruct"
-export WATSONX_PROJECT_ID="your-project-id"
+export AI_PROVIDER=ollama
+export OLLAMA_BASE_URL=http://localhost:11434   # default
+export OLLAMA_MODEL=granite4.2:3b               # default
 ```
 
-Without these variables, Black Flag uses its deterministic provider (rule-based category→primitive mapping). The output format is identical — the deterministic provider covers the demo application completely.
+Ollama runs entirely locally via `POST {OLLAMA_BASE_URL}/api/chat` and needs
+**no IBM credentials** — it is the recommended provider for the hackathon demo.
+
+### IBM watsonx.ai (optional)
+
+Credentials are supplied **only** through environment variables — the API key is
+never hardcoded, logged, or committed.
+
+```bash
+export WATSONX_API_KEY="your-ibm-cloud-api-key"       # IBM Cloud API key (secret)
+export WATSONX_PROJECT_ID="your-watsonx-project-id"
+export WATSONX_BASE_URL="https://us-south.ml.cloud.ibm.com/ml/v1"
+export WATSONX_MODEL_ID="ibm/granite-3-3-8b-instruct"  # IBM Granite instruct model
+```
+
+> `WATSONX_BASE_URL` must match the region where your watsonx.ai project's
+> service instance lives (e.g. `us-south`, `eu-de`, `jp-tok`). The project must
+> be **associated with a watsonx.ai service instance**, otherwise the API returns
+> `no_associated_service_instance_error`.
+
+### Authentication
+
+Black Flag implements the production IBM Cloud auth flow — it does **not** send
+the raw API key as a bearer token:
+
+1. The IBM Cloud API key (`WATSONX_API_KEY`) is exchanged for a short-lived
+   **IAM access token** at `https://iam.cloud.ibm.com/identity/token`
+   (`grant_type=urn:ibm:params:oauth:grant-type:apikey`).
+2. The IAM access token is used as `Authorization: Bearer <token>` for the
+   inference call to `POST {WATSONX_BASE_URL}/text/chat?version=2024-05-31`.
+3. The token is cached in memory and automatically refreshed with a single
+   retry on HTTP 401 (tokens expire). The token is never logged.
+
+### Provider selection & fallback behavior
+
+The provider is chosen by `AI_PROVIDER` (`ollama` / `watsonx` / `deterministic`).
+When `AI_PROVIDER` is unset, Black Flag preserves its original default: it uses
+watsonx if `WATSONX_API_KEY` is present, otherwise deterministic.
+
+The **deterministic provider** (rule-based category→primitive mapping) remains
+the always-available fallback. On any failure — Ollama not running, model
+missing, no watsonx key, IAM error, timeout, non-200 response, malformed JSON,
+or invalid/unsupported primitives — Black Flag safely falls back to
+deterministic rules and never crashes.
+
+The CLI and the web log both report the **real** outcome of each AI call so a
+silent fallback is never mistaken for success:
+
+```
+AI provider: ollama  (model: granite4.2:3b)
+  Ollama request: SUCCESS (Mode A: planning) — response generated by ollama
+```
+or
+```
+  Watsonx request: FAILED (http-403:no_associated_service_instance_error) — fallback: deterministic
+```
+
+`black-flag info` shows the configured provider, model, and endpoint without
+revealing any credential.
+
+> watsonx.ai is a **build-time / development-time** reasoning component only.
+> The packaged application and its runtime never depend on watsonx.
 
 ---
 
@@ -180,6 +352,9 @@ pytest tests/test_phase1.py -v       # Phase 1 (types, adapters, detector)
 pytest tests/test_analyzer.py -v     # Phase 2 (analyzer, score)
 pytest tests/test_primitives.py -v   # Phase 2 (all 7 primitives)
 pytest tests/test_adaptation_engine.py -v  # Phase 3 (patcher, planner, AI)
+pytest tests/test_watsonx.py -v      # watsonx.ai provider (mocked HTTP)
+pytest tests/test_ollama.py -v       # Ollama / Granite provider (mocked HTTP)
+pytest tests/test_web.py -v          # web API (FastAPI TestClient)
 ```
 
 ---
@@ -213,16 +388,17 @@ black_flag/
   adapters/       base.py, ubuntu.py, fedora.py, arch.py, normalization.py
   primitives/     catalog.py + 7 primitive modules
   adaptation_engine/  patcher.py, rollback.py, planner.py
-  ai/             provider.py, deterministic.py, watsonx.py, factory.py, prompts.py
+  ai/             provider.py, deterministic.py, watsonx.py, ollama.py, factory.py, prompts.py
   build/          container.py, script_gen.py, matrix.py
   packager/       packer.py
   installer/      installer.py
   runtime/        detector.py
   cli/            main.py
+  web/            app.py, routes.py, schemas.py, services.py, static/ (SPA)
 examples/
   portable-demo/  app.py, setup.sh, requirements.txt, test.sh
 scripts/          pull-images.sh
-tests/            test_phase1.py, test_analyzer.py, test_primitives.py, test_adaptation_engine.py
+tests/            test_phase1.py, test_analyzer.py, test_primitives.py, test_adaptation_engine.py, test_watsonx.py, test_ollama.py, test_web.py
 docs/             architecture.md
 ```
 

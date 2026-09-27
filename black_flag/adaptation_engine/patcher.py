@@ -61,25 +61,28 @@ def apply_primitive(
             f"{primitive.id}: apply() returned unchanged content for {target_file_rel!r}"
         )
 
-    # Write modified content back
-    target_path.write_text(after, encoding="utf-8")
+    after_lf = after.replace("\r\n", "\n").replace("\r", "\n")
 
-    # Compute unified diff
+    with open(target_path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(after_lf)
+
+    before_split = before.replace("\r\n", "\n").splitlines(keepends=True)
+    after_split = after_lf.splitlines(keepends=True)
     diff_lines = list(
         difflib.unified_diff(
-            before.splitlines(keepends=True),
-            after.splitlines(keepends=True),
+            before_split,
+            after_split,
             fromfile=f"a/{target_file_rel}",
             tofile=f"b/{target_file_rel}",
         )
     )
     diff_text = "".join(diff_lines)
 
-    # Write .patch file
     diffs_dir = working_tree / "diffs"
     diffs_dir.mkdir(exist_ok=True)
     patch_name = f"{sequence:03d}-{primitive.id}.patch"
-    (diffs_dir / patch_name).write_text(diff_text, encoding="utf-8")
+    with open(diffs_dir / patch_name, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(diff_text)
 
     return AppliedDiff(
         sequence=sequence,

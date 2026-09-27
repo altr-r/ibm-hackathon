@@ -21,6 +21,39 @@ from pathlib import Path
 from black_flag.core.types import AppliedDiff
 
 
+_SHELL_EXTS = {".sh", ".bash"}
+
+
+def _normalize_line_endings(tree: Path) -> None:
+    """
+    Force every shell script under *tree* to use Unix LF line endings.
+
+    When the host is Windows, user-provided setup.sh / test.sh scripts almost
+    always carry ``\\r\\n`` endings.  Bash inside the Linux containers cannot
+    parse CR characters and produces inscrutable ``command not found`` errors
+    (because the CR is interpreted as part of the command token).
+
+    Only shell scripts (.sh, .bash) are touched — Python, C, and config
+    files either don't care about line endings or are handled downstream by
+    apply_primitive which always writes with LF.
+    """
+    for path in tree.rglob("*"):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in _SHELL_EXTS:
+            continue
+        # Skip black-flag's own generated scripts — script_gen writes LF.
+        if "bf_scripts" in path.parts or "diffs" in path.parts:
+            continue
+        try:
+            data = path.read_bytes()
+        except OSError:
+            continue
+        if b"\r" in data:
+            normalized = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+            path.write_bytes(normalized)
+
+
 def create_working_tree(source_dir: Path) -> Path:
     """
     Copy *source_dir* into a fresh temp directory and return its path.
@@ -31,6 +64,7 @@ def create_working_tree(source_dir: Path) -> Path:
     tmp = Path(tempfile.mkdtemp(prefix="blackflag-"))
     dst = tmp / source_dir.name
     shutil.copytree(str(source_dir), str(dst), dirs_exist_ok=False)
+    _normalize_line_endings(dst)
     return dst
 
 
@@ -41,15 +75,14 @@ def reset_working_tree(working_tree: Path, source_dir: Path) -> None:
     Wipes *working_tree* in-place and re-copies from *source_dir*.
     The diffs/ and bf_scripts/ subdirectories are always removed.
     """
-    # Remove everything inside the working tree
     for child in list(working_tree.iterdir()):
         if child.is_dir():
             shutil.rmtree(child)
         else:
             child.unlink()
 
-    # Re-copy from source
     shutil.copytree(str(source_dir), str(working_tree), dirs_exist_ok=True)
+    _normalize_line_endings(working_tree)
 
 
 def reapply_diffs(

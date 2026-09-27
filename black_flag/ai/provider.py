@@ -4,7 +4,8 @@ ai/provider.py — AIProvider abstract base class.
 All AI integration is accessed through this interface.
 Concrete implementations:
   - DeterministicProvider: rule-based; no API calls; always available
-  - WatsonxProvider: IBM watsonx.ai via OpenAI-compatible /v1/chat/completions
+  - WatsonxProvider: IBM watsonx.ai via the native /ml/v1/text/chat endpoint,
+    authenticated with an IAM access token exchanged from WATSONX_API_KEY
 
 Mode A (plan_adaptations): given issues + catalog → AdaptationPlan
 Mode B (diagnose_failure): given build failure + applied diffs → RepairAction

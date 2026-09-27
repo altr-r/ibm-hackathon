@@ -33,7 +33,7 @@ for _generic, _distro_map in NORMALIZATION_TABLE.items():
 class PackageNameRemapPrimitive(AdaptationPrimitive):
     id = "package_name_remap"
     description = "Replace Debian-specific package names with distro-aware equivalents"
-    supported_file_types = [".sh", ".bash", ".py", ".txt"]
+    supported_file_types = [".sh", ".bash"]
     safe_to_auto_apply = True
 
     def matches(self, file_content: str, file_ext: str) -> bool:

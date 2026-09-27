@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Black Flag — AI-Assisted Linux Portability Engine</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- ============================ TOP BAR ============================ -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="flag" aria-hidden="true">&#9873;</span>
+      <div class="brand-text">
+        <h1>BLACK FLAG</h1>
+        <p class="subtitle">AI-Assisted Linux Portability Engine</p>
+      </div>
+    </div>
+
+    <div class="status-bar" id="status-bar">
+      <div class="chip" id="chip-provider">
+        <span class="chip-label">AI Provider</span>
+        <span class="chip-value" id="provider-value">&mdash;</span>
+      </div>
+      <div class="chip" id="chip-status">
+        <span class="chip-label">Status</span>
+        <span class="chip-value" id="status-value">Ready</span>
+      </div>
+      <div class="chip" id="chip-docker">
+        <span class="chip-label">Docker</span>
+        <span class="chip-value" id="docker-value">&mdash;</span>
+      </div>
+      <div class="chip" id="chip-ollama">
+        <span class="chip-label">Ollama</span>
+        <span class="chip-value" id="ollama-value">&mdash;</span>
+      </div>
+    </div>
+  </header>
+
+  <p class="tagline">Analyze once. Adapt safely. Build across Linux distributions.</p>
+
+  <!-- ============================ LAYOUT ============================ -->
+  <main class="layout">
+    <!-- ------------------------- LEFT COLUMN ------------------------- -->
+    <section class="col col-left">
+      <!-- Project -->
+      <div class="card" id="project-card">
+        <h2 class="card-title">Project</h2>
+        <div class="project-actions">
+          <button class="btn btn-primary" id="btn-launch-demo">Launch Demo</button>
+          <label class="btn btn-ghost" for="file-input">Upload Project</label>
+          <input type="file" id="file-input" accept=".zip,.tar.gz,.tgz" hidden />
+        </div>
+        <div class="project-meta" id="project-meta">
+          <span class="muted">No project selected. Launch the built-in demo or upload a .zip / .tar.gz archive.</span>
+        </div>
+      </div>
+
+      <!-- Targets -->
+      <div class="card" id="targets-card">
+        <h2 class="card-title">Target Distributions</h2>
+        <div class="targets" id="targets"><!-- populated by JS --></div>
+      </div>
+
+      <!-- Actions -->
+      <div class="card" id="actions-card">
+        <div class="action-row">
+          <div class="field">
+            <label for="provider-select">AI Provider</label>
+            <select id="provider-select">
+              <option value="ollama">Ollama (local Granite)</option>
+              <option value="watsonx">watsonx.ai</option>
+              <option value="deterministic">Deterministic (no AI)</option>
+            </select>
+          </div>
+        </div>
+        <div class="action-buttons">
+          <button class="btn btn-primary btn-lg" id="btn-analyze">Analyze Portability</button>
+          <button class="btn btn-accent btn-lg" id="btn-adapt" disabled>Adapt Project</button>
+        </div>
+      </div>
+
+      <!-- Issues -->
+      <div class="card" id="issues-card">
+        <div class="issues-head">
+          <h2 class="card-title">Portability Issues</h2>
+          <div class="score-badge" id="score-badge">
+            <span class="score-label">Score</span>
+            <span class="score-value" id="score-value">&mdash;</span>
+          </div>
+        </div>
+        <p class="issue-count muted" id="issue-count">Run analysis to detect portability issues.</p>
+        <div class="table-wrap" id="issues-table-wrap">
+          <table class="issue-table" id="issues-table" hidden>
+            <thead>
+              <tr>
+                <th>Sev</th><th>Category</th><th>File:Line</th>
+                <th>Affected</th><th>Description</th><th>Primitive</th>
+              </tr>
+            </thead>
+            <tbody id="issues-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ------------------------- RIGHT COLUMN ------------------------- -->
+    <section class="col col-right">
+      <!-- Pipeline -->
+      <div class="card" id="pipeline-card">
+        <h2 class="card-title">Pipeline</h2>
+        <ol class="pipeline" id="pipeline"><!-- populated by JS --></ol>
+      </div>
+
+      <!-- Console -->
+      <div class="card" id="console-card">
+        <div class="console-head">
+          <h2 class="card-title">Live Log</h2>
+          <button class="btn btn-ghost btn-sm" id="btn-clear-log">Clear</button>
+        </div>
+        <pre class="console" id="console"><span class="muted">Waiting for a job&hellip;</span></pre>
+      </div>
+
+      <!-- Results -->
+      <div class="card" id="results-card" hidden>
+        <h2 class="card-title">Compatibility Results</h2>
+        <div class="scores">
+          <div class="score-box">
+            <span class="score-cap">Initial score</span>
+            <span class="score-num" id="result-score-before">&mdash;</span>
+          </div>
+          <span class="arrow">&rarr;</span>
+          <div class="score-box">
+            <span class="score-cap">Final score</span>
+            <span class="score-num" id="result-score-after">&mdash;</span>
+          </div>
+          <div class="score-box">
+            <span class="score-cap">Adaptations</span>
+            <span class="score-num" id="result-adaptations">&mdash;</span>
+          </div>
+        </div>
+        <table class="matrix-table" id="matrix-table">
+          <thead><tr><th>Distribution</th><th>Prepare</th><th>Build</th><th>Test</th><th>Result</th></tr></thead>
+          <tbody id="matrix-tbody"></tbody>
+        </table>
+        <p class="ai-summary muted" id="ai-summary"></p>
+      </div>
+
+      <!-- Package -->
+      <div class="card" id="package-card" hidden>
+        <h2 class="card-title">Package Ready</h2>
+        <div class="package-row">
+          <div class="package-info">
+            <span class="package-name" id="package-name">&mdash;</span>
+            <span class="package-size muted" id="package-size"></span>
+          </div>
+          <a class="btn btn-accent" id="package-download" href="#" download>Download .bfpack</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>Black Flag v<span id="version">0.1.0</span></span>
+    <span class="muted">Bounded &middot; Auditable &middot; Reversible &middot; Deterministic adaptation primitives</span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
